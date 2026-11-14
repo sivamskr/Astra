@@ -1,0 +1,69 @@
+User Login vs. Server Login (Machine-to-Machine) in OAuth 2.0
+
+Below is a clean, side-by-side breakdown of the two scenarios, followed by a consolidated differences table.
+
+---
+
+1. The Actors Involved
+
+Actor User Login (Authorization Code + PKCE) Server Login (Client Credentials)
+You (the human) ✅ Present — logs in, grants consent ❌ Absent — no human involved
+Your Application ✅ Acts on your behalf ✅ Acts on its own behalf
+Authorization Server ✅ Issues tokens after user consent ✅ Issues tokens after client authentication
+Resource Server (API) ✅ Receives access token, returns your data ✅ Receives access token, returns app-scoped data
+Browser / Redirect ✅ Required for login + consent ❌ Never used — direct back-channel only
+
+---
+
+2. Step-by-Step Flow Comparison
+
+Step User Login Server Login
+1. Initiation User clicks "Login" in the app App decides it needs an API token (e.g., on startup or on expiry)
+2. Identity proof App redirects user's browser to Authorization Server login page App sends client_id + client_secret directly to /token endpoint
+3. Consent User sees consent screen and clicks Allow No consent — permissions are pre-configured at client registration
+4. Credential returned to app Authorization Server redirects back with a short-lived Authorization Code — (skipped; no intermediate code)
+5. Token exchange App's backend exchanges the code + code_verifier (+ client secret) at /token App's backend sends grant_type=client_credentials + credentials at /token
+6. Tokens received Access Token + Refresh Token Access Token only (❌ no refresh token)
+7. API call App calls Resource Server with Authorization: Bearer <access_token> App calls Resource Server with Authorization: Bearer <access_token>
+8. Token expiry Access token expires (e.g., 1 hr) Access token expires (e.g., 5–60 min)
+9. Renewal App sends Refresh Token to /token (grant_type=refresh_token) → gets new Access Token + rotated Refresh Token App repeats Step 2 (re-sends client_id + client_secret) → gets new Access Token
+10. User involvement on renewal ❌ None — silent, seamless ❌ None — no user exists
+
+---
+
+3. Key Differences (Consolidated)
+
+Dimension User Login (Auth Code + PKCE) Server Login (Client Credentials)
+Grant type authorization_code client_credentials
+Who is authenticated? The user (and the client) Only the client (application)
+Whose data is accessed? The user's resources The application's own resources / service-to-service data
+Human interaction Required once (login + consent) Never
+Browser redirect Required Not used
+Refresh token issued? ✅ Yes ❌ No
+How to renew Use the Refresh Token Re-authenticate with client credentials
+Client secret required? Yes (for confidential clients) ✅ Yes — always (or private-key JWT)
+PKCE (code_verifier) ✅ Required ❌ Not applicable
+Consent screen ✅ Shown to user ❌ Never shown
+Token lifetime (typical) Access: ~1 hr · Refresh: days–weeks Access: 5–60 min · Refresh: N/A
+Best suited for Web apps, mobile apps, SPAs, CLIs acting for a user Backend services, cron jobs, daemons, microservices, CI/CD pipelines
+Attack surface if secret leaks Refresh token can be rotated/revoked; user can re-login Client secret is the master key — must be rotated immediately
+RFC reference RFC 6749 §4.1 + RFC 7636 (PKCE) RFC 6749 §4.4
+
+---
+
+4. One-Line Mental Model
+
+ Mental Model
+User Login "I am acting for Alice — prove Alice said yes, then give me a key to her data."
+Server Login "I am acting as myself — here are my credentials, give me a key to the API."
+
+---
+
+5. Decision Rule
+
+Ask: "Whose data am I accessing?"
+
+· If it's a specific user's data → User Login (Authorization Code + PKCE)
+· If it's no particular user's data (the app's own data, or a shared service account) → Server Login (Client Credentials)
+
+That single question determines the entire flow, token strategy, and security posture.
